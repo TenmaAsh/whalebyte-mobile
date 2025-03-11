@@ -15,15 +15,17 @@ import { ReportReason } from '../../types/moderation';
 interface ReportModalProps {
   visible: boolean;
   onClose: () => void;
-  postId: string;
+  contentId: string;
+  contentType: 'post' | 'comment' | 'sphere';
 }
 
 const REPORT_REASONS: { label: string; value: ReportReason }[] = [
-  { label: 'Spam', value: 'spam' },
-  { label: 'Harassment', value: 'harassment' },
   { label: 'Inappropriate Content', value: 'inappropriate_content' },
   { label: 'Hate Speech', value: 'hate_speech' },
   { label: 'Misinformation', value: 'misinformation' },
+  { label: 'Spam', value: 'spam' },
+  { label: 'Harassment', value: 'harassment' },
+  { label: 'Violence', value: 'violence' },
   { label: 'Copyright Violation', value: 'copyright' },
   { label: 'Other', value: 'other' },
 ];
@@ -31,7 +33,8 @@ const REPORT_REASONS: { label: string; value: ReportReason }[] = [
 export const ReportModal: React.FC<ReportModalProps> = ({
   visible,
   onClose,
-  postId,
+  contentId,
+  contentType,
 }) => {
   const { createReport, isLoading } = useModeration();
   const [selectedReason, setSelectedReason] = useState<ReportReason | null>(null);
@@ -43,7 +46,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     }
 
     try {
-      await createReport(postId, selectedReason, description);
+      await createReport(contentId, contentType, selectedReason, description);
       setSelectedReason(null);
       setDescription('');
       onClose();
@@ -62,6 +65,11 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.title}>Report Content</Text>
+          
+          <Text style={styles.description}>
+            Reports are reviewed by the community. Content will be removed if the majority votes for removal.
+            Certain content (e.g., violence, harassment) may be automatically removed by AI moderation.
+          </Text>
 
           <ScrollView style={styles.reasonsContainer}>
             {REPORT_REASONS.map(({ label, value }) => (
@@ -142,13 +150,20 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '90%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '90%',
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 14,
+    color: '#666666',
     marginBottom: 20,
     textAlign: 'center',
+    lineHeight: 20,
   },
   reasonsContainer: {
     maxHeight: 200,
