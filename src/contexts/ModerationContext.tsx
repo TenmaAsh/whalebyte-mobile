@@ -1,24 +1,18 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import {
-  Report,
-  ReportReason,
-  ReportStatus,
-  ModerationStats,
-} from '../types/moderation';
-import {
-  MOCK_REPORTS,
-  MOCK_MODERATION_STATS,
-  simulateAICheck,
-  checkVotingThreshold,
-  simulateReportResolution,
-  createMockReport,
-} from '../utils/testData';
+import { Report, ReportReason } from '../types/moderation';
+import { mockModerationService } from '../services/mockModerationService';
 
 interface ModerationContextType {
   reports: Report[];
-  moderationStats: ModerationStats;
   isLoading: boolean;
   error: string | null;
+  moderationStats: {
+    totalReports: number;
+    pendingReports: number;
+    resolvedReports: number;
+    aiDetections: number;
+    communityVotes: number;
+  } | null;
   loadReports: (sphereId: string) => Promise<void>;
   createReport: (
     contentId: string,
@@ -27,10 +21,9 @@ interface ModerationContextType {
     description: string
   ) => Promise<void>;
   submitVote: (reportId: string, vote: 'remove' | 'keep') => Promise<void>;
-  checkContent: (content: string) => Promise<number>;
 }
 
-const ModerationContext = createContext<ModerationContextType | undefined>(undefined);
+const ModerationContext = createContext<ModerationContextType | null>(null);
 
 export const useModeration = () => {
   const context = useContext(ModerationContext);
@@ -43,19 +36,19 @@ export const useModeration = () => {
 export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [reports, setReports] = useState<Report[]>(MOCK_REPORTS);
-  const [moderationStats, setModerationStats] = useState<ModerationStats>(MOCK_MODERATION_STATS);
+  const [reports, setReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [moderationStats, setModerationStats] = useState<ModerationContextType['moderationStats']>(null);
 
   const loadReports = useCallback(async (sphereId: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      // In development, we're using mock data
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
-      setReports(MOCK_REPORTS);
-      setModerationStats(MOCK_MODERATION_STATS);
+      const fetchedReports = await mockModerationService.getReports(sphereId);
+      const stats = await mockModerationService.getModerationStats();
+      setReports(fetchedReports);
+      setModerationStats(stats);
     } catch (err) {
       setError('Failed to load reports');
       console.error('Error loading reports:', err);
@@ -73,35 +66,19 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(true);
     setError(null);
     try {
-      // Simulate AI content check
-      const aiConfidence = await simulateAICheck(description);
-      
-      const newReport = createMockReport({
+      const newReport = await mockModerationService.createReport(
         contentId,
         contentType,
         reason,
-        description,
-        aiConfidence: aiConfidence > 0.5 ? aiConfidence : null,
-      });
-
-      // Update reports list
-      setReports(prev => [...prev, newReport]);
-      
-      // Update stats
-      setModerationStats(prev => ({
-        ...prev,
-        totalReports: prev.totalReports + 1,
-        pendingReports: prev.pendingReports + 1,
-        aiDetections: aiConfidence > 0.8 ? prev.aiDetections + 1 : prev.aiDetections,
-      }));
-
-      // If AI confidence is high, automatically resolve the report
-      if (aiConfidence > 0.8) {
-        await submitVote(newReport.id, 'remove');
-      }
+        description
+      );
+      setReports(prev => [newReport, ...prev]);
+      const stats = await mockModerationService.getModerationStats();
+      setModerationStats(stats);
     } catch (err) {
       setError('Failed to create report');
       console.error('Error creating report:', err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -111,62 +88,31 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(true);
     setError(null);
     try {
-      setReports(prev => {
-        const updatedReports = prev.map(report => {
-          if (report.id === reportId) {
-            const updatedReport = {
-              ...report,
-              removeVotes: vote === 'remove' ? report.removeVotes + 1 : report.removeVotes,
-              keepVotes: vote === 'keep' ? report.keepVotes + 1 : report.keepVotes,
-            };
-
-            // Check if the report should be resolved
-            const newStatus = simulateReportResolution(updatedReport);
-            if (newStatus === 'resolved' && report.status === 'pending') {
-              setModerationStats(prev => ({
-                ...prev,
-                pendingReports: prev.pendingReports - 1,
-                resolvedReports: prev.resolvedReports + 1,
-                communityVotes: prev.communityVotes + 1,
-              }));
-            }
-
-            return {
-              ...updatedReport,
-              status: newStatus,
-            };
-          }
-          return report;
-        });
-
-        return updatedReports;
-      });
+      const updatedReport = await mockModerationService.submitVote(reportId, vote);
+      setReports(prev =>
+        prev.map(report =>
+          report.id === reportId ? updatedReport : report
+        )
+      );
+      const stats = await mockModerationService.getModerationStats();
+      setModerationStats(stats);
     } catch (err) {
       setError('Failed to submit vote');
       console.error('Error submitting vote:', err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const checkContent = useCallback(async (content: string): Promise<number> => {
-    try {
-      return await simulateAICheck(content);
-    } catch (err) {
-      console.error('Error checking content:', err);
-      return 0;
-    }
-  }, []);
-
   const value = {
     reports,
-    moderationStats,
     isLoading,
     error,
+    moderationStats,
     loadReports,
     createReport,
     submitVote,
-    checkContent,
   };
 
   return (
