@@ -1,9 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { HomeScreen } from '../screens/HomeScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
-import { ModerationTestScreen } from '../screens/ModerationTestScreen';
+import { TestModerationScreen } from '../screens/TestModerationScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -16,10 +14,8 @@ export const MainNavigator: React.FC = () => {
 
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          } else if (route.name === 'Moderation') {
-            iconName = focused ? 'shield' : 'shield-outline';
+          } else if (route.name === 'Test') {
+            iconName = focused ? 'bug' : 'bug-outline';
           }
 
           return <Ionicons name={iconName as any} size={size} color={color} />;
@@ -28,9 +24,13 @@ export const MainNavigator: React.FC = () => {
         tabBarInactiveTintColor: 'gray',
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Moderation" component={ModerationTestScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen
+        name="Test"
+        component={TestModerationScreen}
+        options={{
+          title: 'Test Moderation',
+        }}
+      />
     </Tab.Navigator>
   );
 };
