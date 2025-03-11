@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { BlockchainProvider } from './src/contexts/BlockchainContext';
 import { PostProvider } from './src/contexts/PostContext';
 import { TokenProvider } from './src/contexts/TokenContext';
+import { ModerationProvider } from './src/contexts/ModerationContext';
 
 // Screens
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -98,7 +99,9 @@ export default function App() {
           <BlockchainProvider>
             <TokenProvider>
               <PostProvider>
-                <AppContent />
+                <ModerationProvider>
+                  <AppContent />
+                </ModerationProvider>
               </PostProvider>
             </TokenProvider>
           </BlockchainProvider>
