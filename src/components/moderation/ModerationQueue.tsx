@@ -1,158 +1,107 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
   Alert,
 } from 'react-native';
 import { useModeration } from '../../contexts/ModerationContext';
-import { Report } from '../../types/moderation';
+import { Report, ReportStatus } from '../../types/moderation';
+import { PostCard } from '../posts/PostCard';
 
-interface ActionModalProps {
-  visible: boolean;
-  onClose: () => void;
-  onAction: (action: string, reason: string) => Promise<void>;
+interface ModerationQueueProps {
+  sphereId: string;
 }
 
-const ReportItem: React.FC<{
-  report: Report;
-  onAction: (action: 'resolve' | 'reject', notes?: string) => Promise<void>;
-}> = ({ report, onAction }) => {
-  const handleResolve = () => {
-    Alert.prompt(
-      'Resolve Report',
-      'Add any notes about this resolution:',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Resolve',
-          onPress: (notes) => onAction('resolve', notes || undefined),
-        },
-      ],
-      'plain-text'
-    );
-  };
-
-  const handleReject = () => {
-    Alert.prompt(
-      'Reject Report',
-      'Add any notes about this rejection:',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Reject',
-          onPress: (notes) => onAction('reject', notes || undefined),
-        },
-      ],
-      'plain-text'
-    );
-  };
-
-  return (
-    <View style={styles.reportItem}>
-      <View style={styles.reportHeader}>
-        <Text style={styles.reportReason}>{report.reason}</Text>
-        <Text style={styles.reportDate}>
-          {new Date(report.createdAt).toLocaleDateString()}
-        </Text>
-      </View>
-
-      <Text style={styles.reportDescription}>{report.description}</Text>
-
-      <View style={styles.reportActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.resolveButton]}
-          onPress={handleResolve}
-        >
-          <Text style={styles.actionButtonText}>Resolve</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.rejectButton]}
-          onPress={handleReject}
-        >
-          <Text style={styles.actionButtonText}>Reject</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-};
-
-export const ModerationQueue: React.FC = () => {
+export const ModerationQueue: React.FC<ModerationQueueProps> = ({ sphereId }) => {
   const {
     reports,
+    loadReports,
+    submitVote,
     isLoading,
     error,
-    updateReportStatus,
-    refreshReports,
-    getModerationStats,
+    moderationStats,
   } = useModeration();
-
-  const [stats, setStats] = useState({
-    totalReports: 0,
-    pendingReports: 0,
-    resolvedReports: 0,
-    rejectedReports: 0,
-    averageResponseTime: 0,
-  });
-
-  const [refreshing, setRefreshing] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   useEffect(() => {
-    loadStats();
-  }, [reports]);
+    loadReports(sphereId);
+  }, [sphereId]);
 
-  const loadStats = async () => {
+  const handleVote = async (reportId: string, vote: 'remove' | 'keep') => {
     try {
-      const newStats = await getModerationStats();
-      setStats(newStats);
-    } catch (err) {
-      console.error('Error loading stats:', err);
+      await submitVote(reportId, vote);
+      Alert.alert('Success', 'Your vote has been recorded');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to submit vote. Please try again.');
     }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refreshReports();
-    await loadStats();
-    setRefreshing(false);
-  };
+  const renderReportItem = ({ item: report }: { item: Report }) => {
+    const isSelected = selectedReport?.id === report.id;
 
-  const handleReportAction = async (
-    report: Report,
-    action: 'resolve' | 'reject',
-    notes?: string
-  ) => {
-    try {
-      await updateReportStatus(
-        report.id,
-        action === 'resolve' ? 'resolved' : 'rejected',
-        notes
-      );
-      await refreshReports();
-    } catch (err) {
-      console.error('Error handling report action:', err);
-      Alert.alert('Error', 'Failed to process report action');
-    }
+    return (
+      <View style={styles.reportItem}>
+        <TouchableOpacity
+          style={[styles.reportHeader, isSelected && styles.selectedReport]}
+          onPress={() => setSelectedReport(isSelected ? null : report)}
+        >
+          <View style={styles.reportInfo}>
+            <Text style={styles.reportReason}>{report.reason}</Text>
+            <Text style={styles.reportDate}>
+              {new Date(report.createdAt).toLocaleDateString()}
+            </Text>
+          </View>
+          <View style={styles.voteCount}>
+            <Text style={styles.voteText}>
+              Remove: {report.removeVotes} | Keep: {report.keepVotes}
+            </Text>
+            <Text style={styles.statusText}>
+              Status: {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {isSelected && (
+          <View style={styles.reportContent}>
+            {report.contentType === 'post' && (
+              <PostCard post={report.content} />
+            )}
+            
+            <View style={styles.reportDescription}>
+              <Text style={styles.descriptionLabel}>Report Description:</Text>
+              <Text style={styles.descriptionText}>{report.description}</Text>
+            </View>
+
+            {report.status === 'pending' && (
+              <View style={styles.voteButtons}>
+                <TouchableOpacity
+                  style={[styles.voteButton, styles.keepButton]}
+                  onPress={() => handleVote(report.id, 'keep')}
+                >
+                  <Text style={styles.voteButtonText}>Keep Content</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.voteButton, styles.removeButton]}
+                  onPress={() => handleVote(report.id, 'remove')}
+                >
+                  <Text style={styles.voteButtonText}>Remove Content</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
   };
 
   if (error) {
     return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={refreshReports}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
+      <View style={styles.centerContainer}>
+        <Text style={styles.errorText}>Error loading reports: {error}</Text>
       </View>
     );
   }
@@ -160,47 +109,37 @@ export const ModerationQueue: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats.pendingReports}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats.resolvedReports}</Text>
-          <Text style={styles.statLabel}>Resolved</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats.rejectedReports}</Text>
-          <Text style={styles.statLabel}>Rejected</Text>
+        <Text style={styles.statsTitle}>Moderation Statistics</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{moderationStats?.totalReports || 0}</Text>
+            <Text style={styles.statLabel}>Total Reports</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{moderationStats?.pendingReports || 0}</Text>
+            <Text style={styles.statLabel}>Pending</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{moderationStats?.resolvedReports || 0}</Text>
+            <Text style={styles.statLabel}>Resolved</Text>
+          </View>
         </View>
       </View>
 
-      {isLoading && reports.length === 0 ? (
-        <View style={styles.loadingContainer}>
+      {isLoading ? (
+        <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#0000ff" />
         </View>
       ) : (
-        <ScrollView
-          style={styles.reportsContainer}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <FlatList
+          data={reports}
+          renderItem={renderReportItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No reports to review</Text>
           }
-        >
-          {reports
-            .filter((report) => report.status === 'pending')
-            .map((report) => (
-              <ReportItem
-                key={report.id}
-                report={report}
-                onAction={(action, notes) =>
-                  handleReportAction(report, action, notes)
-                }
-              />
-            ))}
-
-          {reports.filter((report) => report.status === 'pending').length === 0 && (
-            <Text style={styles.emptyText}>No pending reports</Text>
-          )}
-        </ScrollView>
+        />
       )}
     </View>
   );
@@ -209,17 +148,28 @@ export const ModerationQueue: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f5f5f5',
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statsContainer: {
-    flexDirection: 'row',
+    backgroundColor: '#ffffff',
     padding: 16,
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    marginBottom: 8,
+  },
+  statsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
   },
   statItem: {
-    flex: 1,
     alignItems: 'center',
   },
   statValue: {
@@ -230,20 +180,26 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 14,
     color: '#666666',
+    marginTop: 4,
   },
-  reportsContainer: {
-    flex: 1,
+  listContainer: {
     padding: 16,
   },
   reportItem: {
     backgroundColor: '#ffffff',
     borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    marginBottom: 12,
+    overflow: 'hidden',
   },
   reportHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  selectedReport: {
+    backgroundColor: '#f0f0ff',
+  },
+  reportInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
@@ -251,68 +207,74 @@ const styles = StyleSheet.create({
   reportReason: {
     fontSize: 16,
     fontWeight: '600',
-    textTransform: 'capitalize',
   },
   reportDate: {
     fontSize: 14,
     color: '#666666',
   },
-  reportDescription: {
-    fontSize: 14,
-    color: '#333333',
-    marginBottom: 16,
-  },
-  reportActions: {
+  voteCount: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
   },
-  actionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 4,
-    marginLeft: 8,
-  },
-  resolveButton: {
-    backgroundColor: '#4CAF50',
-  },
-  rejectButton: {
-    backgroundColor: '#F44336',
-  },
-  actionButtonText: {
-    color: '#ffffff',
+  voteText: {
     fontSize: 14,
-    fontWeight: '600',
+    color: '#666666',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  statusText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+  reportContent: {
+    padding: 16,
   },
-  errorText: {
-    color: '#ff0000',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#0000ff',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  reportDescription: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#f9f9f9',
     borderRadius: 8,
   },
-  retryButtonText: {
-    color: '#ffffff',
+  descriptionLabel: {
+    fontSize: 14,
     fontWeight: '600',
+    marginBottom: 8,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: '#333333',
+    lineHeight: 20,
+  },
+  voteButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  voteButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  keepButton: {
+    backgroundColor: '#4CAF50',
+  },
+  removeButton: {
+    backgroundColor: '#f44336',
+  },
+  voteButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorText: {
+    color: '#f44336',
+    fontSize: 16,
+    textAlign: 'center',
   },
   emptyText: {
     textAlign: 'center',
-    color: '#666666',
     fontSize: 16,
-    marginTop: 32,
+    color: '#666666',
+    marginTop: 24,
   },
 });
