@@ -8,9 +8,9 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Post } from '../../types/post';
 import { usePost } from '../../contexts/PostContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { Post } from '../../types/post';
 import { ReportModal } from '../moderation/ReportModal';
 
 interface PostCardProps {
@@ -36,10 +36,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onPress }) => {
       'Delete Post',
       'Are you sure you want to delete this post?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
@@ -55,100 +52,133 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onPress }) => {
     );
   };
 
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleDateString();
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   };
 
-  const showOptions = () => {
-    Alert.alert(
-      'Post Options',
-      'What would you like to do?',
-      [
-        {
-          text: 'Report',
-          onPress: () => setReportModalVisible(true),
-        },
-        user?.id === post.author.id
-          ? {
-              text: 'Delete',
-              style: 'destructive',
-              onPress: handleDelete,
-            }
-          : null,
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ].filter(Boolean) as any
-    );
+  const renderModerationStatus = () => {
+    if (post.moderationStatus === 'under_review') {
+      return (
+        <View style={[styles.moderationBadge, styles.underReviewBadge]}>
+          <Text style={styles.moderationText}>Under Review</Text>
+        </View>
+      );
+    } else if (post.moderationStatus === 'removed') {
+      return (
+        <View style={[styles.moderationBadge, styles.removedBadge]}>
+          <Text style={styles.moderationText}>Removed</Text>
+        </View>
+      );
+    }
+    return null;
   };
 
   return (
-    <>
+    <View style={styles.container}>
       <TouchableOpacity
-        style={styles.container}
+        style={styles.content}
         onPress={onPress}
-        activeOpacity={onPress ? 0.7 : 1}
+        disabled={post.moderationStatus === 'removed'}
       >
         <View style={styles.header}>
-          <View style={styles.authorInfo}>
-            <Text style={styles.authorName}>{post.author.username}</Text>
-            <Text style={styles.postDate}>{formatDate(post.createdAt)}</Text>
+          <View style={styles.userInfo}>
+            <Text style={styles.username}>{post.author.username}</Text>
+            <Text style={styles.date}>{formatDate(post.createdAt)}</Text>
           </View>
-          <TouchableOpacity onPress={showOptions}>
-            <Ionicons name="ellipsis-vertical" size={24} color="#666666" />
-          </TouchableOpacity>
+          {renderModerationStatus()}
         </View>
 
-        <Text style={styles.content}>{post.content}</Text>
+        {post.moderationStatus !== 'removed' ? (
+          <>
+            <Text style={styles.text}>{post.content}</Text>
 
-        {post.media && post.media.length > 0 && (
-          <View style={styles.mediaContainer}>
-            {post.media.map((media, index) => (
-              <Image
-                key={index}
-                source={{ uri: media.url }}
-                style={styles.mediaImage}
-                resizeMode="cover"
-              />
-            ))}
-          </View>
+            {post.media && post.media.length > 0 && (
+              <View style={styles.mediaContainer}>
+                {post.media.map((media, index) => (
+                  <Image
+                    key={index}
+                    source={{ uri: media.url }}
+                    style={styles.media}
+                    resizeMode="cover"
+                  />
+                ))}
+              </View>
+            )}
+
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleAppreciate}
+              >
+                <Ionicons
+                  name={post.hasAppreciated ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color={post.hasAppreciated ? '#ff0000' : '#666666'}
+                />
+                <Text style={styles.actionText}>
+                  {post.appreciationCount || 0}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => onPress && onPress()}
+              >
+                <Ionicons name="chatbubble-outline" size={24} color="#666666" />
+                <Text style={styles.actionText}>{post.commentCount || 0}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => setReportModalVisible(true)}
+              >
+                <Ionicons name="flag-outline" size={24} color="#666666" />
+              </TouchableOpacity>
+
+              {user?.id === post.author.id && (
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={handleDelete}
+                >
+                  <Ionicons name="trash-outline" size={24} color="#666666" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        ) : (
+          <Text style={styles.removedText}>
+            This content has been removed for violating community guidelines.
+          </Text>
         )}
-
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={handleAppreciate}
-          >
-            <Ionicons name="heart-outline" size={24} color="#666666" />
-            <Text style={styles.actionText}>{post.appreciationCount}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="chatbubble-outline" size={24} color="#666666" />
-            <Text style={styles.actionText}>{post.commentCount}</Text>
-          </TouchableOpacity>
-        </View>
       </TouchableOpacity>
 
       <ReportModal
         visible={reportModalVisible}
         onClose={() => setReportModalVisible(false)}
-        postId={post.id}
+        contentId={post.id}
+        contentType="post"
       />
-    </>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 12,
+    marginVertical: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  content: {
     padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   header: {
     flexDirection: 'row',
@@ -156,46 +186,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  authorInfo: {
+  userInfo: {
     flex: 1,
   },
-  authorName: {
+  username: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
-  postDate: {
-    fontSize: 12,
+  date: {
+    fontSize: 14,
     color: '#666666',
     marginTop: 2,
   },
-  content: {
+  moderationBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  underReviewBadge: {
+    backgroundColor: '#ffd700',
+  },
+  removedBadge: {
+    backgroundColor: '#ff0000',
+  },
+  moderationText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  text: {
     fontSize: 16,
-    marginBottom: 12,
     lineHeight: 24,
+    marginBottom: 12,
   },
   mediaContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     marginBottom: 12,
   },
-  mediaImage: {
+  media: {
     width: '100%',
-    height: 200,
+    aspectRatio: 16 / 9,
     borderRadius: 8,
     marginBottom: 8,
   },
   footer: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    paddingTop: 12,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 24,
+    padding: 8,
   },
   actionText: {
     marginLeft: 4,
     fontSize: 14,
     color: '#666666',
+  },
+  removedText: {
+    fontSize: 16,
+    color: '#666666',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    padding: 16,
   },
 });
