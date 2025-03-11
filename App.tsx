@@ -1,45 +1,23 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Toast from 'react-native-toast-message';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { BlockchainProvider } from './src/contexts/BlockchainContext';
-
-// Screens
-import HomeScreen from './src/screens/HomeScreen';
-import SpheresScreen from './src/screens/SpheresScreen';
-import WalletScreen from './src/screens/WalletScreen';
-import SphereDetailsScreen from './src/screens/SphereDetailsScreen';
+import { SpheresScreen } from './src/screens/SpheresScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
+import { WalletScreen } from './src/screens/WalletScreen';
+import { AuthNavigator } from './src/navigation/AuthNavigator';
+import { ActivityIndicator, View } from 'react-native';
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
 
-function SpheresStack() {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen 
-        name="SpheresMain" 
-        component={SpheresScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen 
-        name="SphereDetails" 
-        component={SphereDetailsScreen}
-        options={{ 
-          headerTitle: 'Sphere Details',
-          headerBackTitle: 'Back'
-        }}
-      />
-    </Stack.Navigator>
-  );
-}
-
-function TabNavigator() {
+const MainNavigator = () => {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        headerShown: true,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
 
@@ -54,31 +32,46 @@ function TabNavigator() {
           return <Ionicons name={iconName as any} size={size} color={color} />;
         },
         tabBarActiveTintColor: '#2563eb',
-        tabBarInactiveTintColor: 'gray',
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: '#ffffff',
-        },
-        headerTitleStyle: {
-          fontWeight: 'bold',
+        tabBarInactiveTintColor: '#64748b',
+        tabBarStyle: {
+          paddingBottom: 5,
+          height: 60,
         },
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Spheres" component={SpheresStack} />
+      <Tab.Screen name="Spheres" component={SpheresScreen} />
       <Tab.Screen name="Wallet" component={WalletScreen} />
     </Tab.Navigator>
   );
-}
+};
+
+const AppContent = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+
+  return (
+    <NavigationContainer>
+      {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
+    </NavigationContainer>
+  );
+};
 
 export default function App() {
   return (
-    <BlockchainProvider>
-      <NavigationContainer>
-        <TabNavigator />
-        <StatusBar style="auto" />
-        <Toast />
-      </NavigationContainer>
-    </BlockchainProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <BlockchainProvider>
+          <AppContent />
+        </BlockchainProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
