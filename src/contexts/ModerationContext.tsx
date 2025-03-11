@@ -4,9 +4,11 @@ import { useAuth } from './AuthContext';
 import {
   Report,
   ReportReason,
+  Vote,
   ModerationStats,
-  ModerationAction,
+  ModerationThresholds,
   ModerationContextType,
+  AIReportReason,
 } from '../types/moderation';
 
 const ModerationContext = createContext<ModerationContextType | undefined>(undefined);
@@ -25,8 +27,43 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Default thresholds - in a real implementation, these would come from your backend
+  const defaultThresholds: ModerationThresholds = {
+    minVotesRequired: 5,
+    removalThreshold: 0.66, // 66% votes needed for removal
+    aiConfidenceThreshold: 0.9, // 90% confidence for AI auto-removal
+    votingPeriod: 24 * 60 * 60 * 1000, // 24 hours
+  };
+
+  const checkContent = useCallback(async (
+    content: string,
+    mediaUrls: string[]
+  ) => {
+    try {
+      // In a real implementation:
+      // 1. Call your AI content moderation service (e.g., AWS Rekognition, Google Cloud Vision)
+      // 2. Process both text and media content
+      // 3. Apply confidence thresholds
+      // 4. Return detailed analysis results
+
+      // Mock implementation
+      const hasIllegalContent = content.toLowerCase().includes('violence') ||
+        content.toLowerCase().includes('abuse');
+
+      return {
+        isAllowed: !hasIllegalContent,
+        flags: hasIllegalContent ? ['hate_speech' as AIReportReason] : [],
+        confidence: hasIllegalContent ? 0.95 : 0.1,
+      };
+    } catch (err) {
+      console.error('Error checking content:', err);
+      throw new Error('Failed to check content');
+    }
+  }, []);
+
   const createReport = useCallback(async (
-    postId: string,
+    contentId: string,
+    contentType: Report['contentType'],
     reason: ReportReason,
     description: string
   ) => {
@@ -41,18 +78,21 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // In a real implementation:
       // 1. Call your backend API to create a report
-      // 2. Update local state with the new report
-      // 3. Handle any errors appropriately
+      // 2. Trigger AI content check
+      // 3. Start voting period
+      // 4. Handle auto-removal if AI flags serious violations
 
       const newReport: Report = {
         id: Date.now().toString(),
-        postId,
+        contentId,
+        contentType,
         reporterId: user.id,
         reason,
         description,
         status: 'pending',
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        votes: [],
       };
 
       setReports(prev => [...prev, newReport]);
@@ -66,13 +106,12 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [user]);
 
-  const updateReportStatus = useCallback(async (
+  const submitVote = useCallback(async (
     reportId: string,
-    status: Report['status'],
-    notes?: string
+    decision: Vote['decision']
   ) => {
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to update reports');
+      Alert.alert('Error', 'You must be logged in to vote');
       return;
     }
 
@@ -81,178 +120,88 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setError(null);
 
       // In a real implementation:
-      // 1. Verify user is a moderator
-      // 2. Call your backend API to update the report
-      // 3. Update local state with the changes
-      // 4. Handle any errors appropriately
+      // 1. Verify user hasn't voted before
+      // 2. Add vote to the report
+      // 3. Check if voting thresholds are met
+      // 4. Auto-resolve if thresholds are met
 
       setReports(prev =>
-        prev.map(report =>
-          report.id === reportId
-            ? {
-                ...report,
-                status,
-                moderatorId: user.id,
-                moderatorNotes: notes,
-                updatedAt: Date.now(),
-              }
-            : report
-        )
+        prev.map(report => {
+          if (report.id !== reportId) return report;
+
+          const existingVoteIndex = report.votes.findIndex(v => v.userId === user.id);
+          let votes = [...report.votes];
+
+          if (existingVoteIndex >= 0) {
+            votes[existingVoteIndex] = { userId: user.id, decision, timestamp: Date.now() };
+          } else {
+            votes.push({ userId: user.id, decision, timestamp: Date.now() });
+          }
+
+          // Check if thresholds are met
+          const totalVotes = votes.length;
+          const removeVotes = votes.filter(v => v.decision === 'remove').length;
+          const removePercentage = removeVotes / totalVotes;
+
+          const thresholdsMet = totalVotes >= defaultThresholds.minVotesRequired &&
+            removePercentage >= defaultThresholds.removalThreshold;
+
+          return {
+            ...report,
+            votes,
+            status: thresholdsMet ? 'resolved' : report.status,
+            updatedAt: Date.now(),
+          };
+        })
       );
 
-      Alert.alert('Success', 'Report status updated successfully');
+      Alert.alert('Success', 'Vote submitted successfully');
     } catch (err) {
-      setError('Failed to update report status');
-      Alert.alert('Error', 'Failed to update report status');
-      console.error('Error updating report status:', err);
+      setError('Failed to submit vote');
+      Alert.alert('Error', 'Failed to submit vote');
+      console.error('Error submitting vote:', err);
     } finally {
       setIsLoading(false);
     }
   }, [user]);
 
-  const removePost = useCallback(async (postId: string, reason: string) => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to moderate content');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // In a real implementation:
-      // 1. Verify user is a moderator
-      // 2. Call your backend API to remove the post
-      // 3. Update local state
-      // 4. Handle any errors appropriately
-
-      const action: ModerationAction = {
-        id: Date.now().toString(),
-        postId,
-        moderatorId: user.id,
-        action: 'remove',
-        reason,
-        createdAt: Date.now(),
+  const getVotingStatus = useCallback((reportId: string) => {
+    const report = reports.find(r => r.id === reportId);
+    if (!report) {
+      return {
+        totalVotes: 0,
+        removeVotes: 0,
+        keepVotes: 0,
+        timeRemaining: 0,
       };
-
-      // Update related reports
-      setReports(prev =>
-        prev.map(report =>
-          report.postId === postId
-            ? { ...report, status: 'resolved', updatedAt: Date.now() }
-            : report
-        )
-      );
-
-      Alert.alert('Success', 'Post removed successfully');
-    } catch (err) {
-      setError('Failed to remove post');
-      Alert.alert('Error', 'Failed to remove post');
-      console.error('Error removing post:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  const restorePost = useCallback(async (postId: string, reason: string) => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to moderate content');
-      return;
     }
 
-    try {
-      setIsLoading(true);
-      setError(null);
+    const totalVotes = report.votes.length;
+    const removeVotes = report.votes.filter(v => v.decision === 'remove').length;
+    const keepVotes = totalVotes - removeVotes;
+    const timeElapsed = Date.now() - report.createdAt;
+    const timeRemaining = Math.max(0, defaultThresholds.votingPeriod - timeElapsed);
+    const userVote = user ? report.votes.find(v => v.userId === user.id)?.decision : undefined;
 
-      const action: ModerationAction = {
-        id: Date.now().toString(),
-        postId,
-        moderatorId: user.id,
-        action: 'restore',
-        reason,
-        createdAt: Date.now(),
-      };
-
-      Alert.alert('Success', 'Post restored successfully');
-    } catch (err) {
-      setError('Failed to restore post');
-      Alert.alert('Error', 'Failed to restore post');
-      console.error('Error restoring post:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  const warnUser = useCallback(async (userId: string, reason: string) => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to moderate users');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const action: ModerationAction = {
-        id: Date.now().toString(),
-        postId: userId, // Using postId for userId in this case
-        moderatorId: user.id,
-        action: 'warn',
-        reason,
-        createdAt: Date.now(),
-      };
-
-      Alert.alert('Success', 'User warned successfully');
-    } catch (err) {
-      setError('Failed to warn user');
-      Alert.alert('Error', 'Failed to warn user');
-      console.error('Error warning user:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  const banUser = useCallback(async (userId: string, reason: string) => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to moderate users');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const action: ModerationAction = {
-        id: Date.now().toString(),
-        postId: userId, // Using postId for userId in this case
-        moderatorId: user.id,
-        action: 'ban',
-        reason,
-        createdAt: Date.now(),
-      };
-
-      Alert.alert('Success', 'User banned successfully');
-    } catch (err) {
-      setError('Failed to ban user');
-      Alert.alert('Error', 'Failed to ban user');
-      console.error('Error banning user:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
+    return {
+      totalVotes,
+      removeVotes,
+      keepVotes,
+      userVote,
+      timeRemaining,
+    };
+  }, [reports, user]);
 
   const getModerationStats = useCallback(async (): Promise<ModerationStats> => {
     try {
-      // In a real implementation:
-      // 1. Call your backend API to get statistics
-      // 2. Calculate or retrieve real metrics
-
       const stats: ModerationStats = {
         totalReports: reports.length,
         pendingReports: reports.filter(r => r.status === 'pending').length,
         resolvedReports: reports.filter(r => r.status === 'resolved').length,
         rejectedReports: reports.filter(r => r.status === 'rejected').length,
+        autoRemovedReports: reports.filter(r => r.status === 'auto_removed').length,
         averageResponseTime: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+        aiDetections: reports.filter(r => r.autoModerated).length,
       };
 
       return stats;
@@ -262,16 +211,9 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [reports]);
 
-  const isModerator = useCallback(async (userId: string, sphereId: string): Promise<boolean> => {
-    try {
-      // In a real implementation:
-      // 1. Check user's roles in the specified sphere
-      // 2. Verify moderator status from your backend
-      return true; // Mock implementation
-    } catch (err) {
-      console.error('Error checking moderator status:', err);
-      return false;
-    }
+  const getThresholds = useCallback(async (): Promise<ModerationThresholds> => {
+    // In a real implementation, fetch from backend
+    return defaultThresholds;
   }, []);
 
   const refreshReports = useCallback(async () => {
@@ -282,8 +224,9 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // In a real implementation:
       // 1. Fetch fresh reports from your backend
       // 2. Update local state with the new data
+      // 3. Check for any resolved votes
+      // 4. Process any pending AI moderations
 
-      // Mock implementation: do nothing for now
     } catch (err) {
       setError('Failed to refresh reports');
       console.error('Error refreshing reports:', err);
@@ -297,13 +240,11 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     isLoading,
     error,
     createReport,
-    updateReportStatus,
-    removePost,
-    restorePost,
-    warnUser,
-    banUser,
+    submitVote,
+    getVotingStatus,
+    checkContent,
     getModerationStats,
-    isModerator,
+    getThresholds,
     refreshReports,
   };
 
