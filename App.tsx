@@ -1,94 +1,51 @@
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { View, ActivityIndicator } from 'react-native';
-
-// Providers
-import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { AuthProvider } from './src/contexts/AuthContext';
 import { BlockchainProvider } from './src/contexts/BlockchainContext';
 import { PostProvider } from './src/contexts/PostContext';
-import { TokenProvider } from './src/contexts/TokenContext';
 import { ModerationProvider } from './src/contexts/ModerationContext';
-
-// Screens
-import { HomeScreen } from './src/screens/HomeScreen';
-import { WalletScreen } from './src/screens/WalletScreen';
-import { ProfileScreen } from './src/screens/ProfileScreen';
-import { LoginScreen } from './src/screens/LoginScreen';
-import { RegisterScreen } from './src/screens/RegisterScreen';
+import { TestModerationScreen } from './src/screens/TestModerationScreen';
+import { CONFIG } from './src/config';
 
 const Tab = createBottomTabNavigator();
-const Auth = createBottomTabNavigator();
 
-const AuthNavigator = () => (
-  <Auth.Navigator screenOptions={{ headerShown: false }}>
-    <Auth.Screen 
-      name="Login" 
-      component={LoginScreen}
-      options={{
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="log-in-outline" size={size} color={color} />
-        ),
-      }}
-    />
-    <Auth.Screen 
-      name="Register" 
-      component={RegisterScreen}
-      options={{
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="person-add-outline" size={size} color={color} />
-        ),
-      }}
-    />
-  </Auth.Navigator>
-);
+const AppContent: React.FC = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
 
-const MainNavigator = () => (
-  <Tab.Navigator>
-    <Tab.Screen 
-      name="Home" 
-      component={HomeScreen}
-      options={{
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="home-outline" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen 
-      name="Wallet" 
-      component={WalletScreen}
-      options={{
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="wallet-outline" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen 
-      name="Profile" 
-      component={ProfileScreen}
-      options={{
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="person-outline" size={size} color={color} />
-        ),
-      }}
-    />
-  </Tab.Navigator>
-);
+          if (route.name === 'Home') {
+            iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Spheres') {
+            iconName = focused ? 'globe' : 'globe-outline';
+          } else if (route.name === 'Create') {
+            iconName = focused ? 'add-circle' : 'add-circle-outline';
+          } else if (route.name === 'Moderation') {
+            iconName = focused ? 'shield' : 'shield-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
+          }
 
-const AppContent = () => {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  return isAuthenticated ? <MainNavigator /> : <AuthNavigator />;
+          return <Ionicons name={iconName as any} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: CONFIG.UI.THEME.PRIMARY_COLOR,
+        tabBarInactiveTintColor: 'gray',
+      })}
+    >
+      <Tab.Screen
+        name="Moderation"
+        component={TestModerationScreen}
+        options={{
+          title: 'Test Moderation',
+        }}
+      />
+    </Tab.Navigator>
+  );
 };
 
 export default function App() {
@@ -97,13 +54,11 @@ export default function App() {
       <NavigationContainer>
         <AuthProvider>
           <BlockchainProvider>
-            <TokenProvider>
-              <PostProvider>
-                <ModerationProvider>
-                  <AppContent />
-                </ModerationProvider>
-              </PostProvider>
-            </TokenProvider>
+            <PostProvider>
+              <ModerationProvider>
+                <AppContent />
+              </ModerationProvider>
+            </PostProvider>
           </BlockchainProvider>
         </AuthProvider>
       </NavigationContainer>
