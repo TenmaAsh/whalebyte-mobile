@@ -1,32 +1,50 @@
 export type ReportReason = 
-  | 'spam'
-  | 'harassment'
   | 'inappropriate_content'
   | 'hate_speech'
   | 'misinformation'
+  | 'spam'
+  | 'harassment'
+  | 'violence'
   | 'copyright'
   | 'other';
 
+export type AIReportReason =
+  | 'child_nudity'
+  | 'pedophilia'
+  | 'child_violence'
+  | 'violence_against_women'
+  | 'rape'
+  | 'extreme_violence'
+  | 'hate_speech'
+  | 'terrorism';
+
+export interface Vote {
+  userId: string;
+  decision: 'remove' | 'keep';
+  timestamp: number;
+}
+
 export interface Report {
   id: string;
-  postId: string;
+  contentId: string;  // Can be postId or commentId
+  contentType: 'post' | 'comment' | 'sphere';
   reporterId: string;
   reason: ReportReason;
   description: string;
-  status: 'pending' | 'reviewed' | 'resolved' | 'rejected';
+  status: 'pending' | 'resolved' | 'rejected' | 'auto_removed';
   createdAt: number;
   updatedAt: number;
-  moderatorId?: string;
+  votes: Vote[];
+  aiFlags?: AIReportReason[];
+  autoModerated?: boolean;
   moderatorNotes?: string;
 }
 
-export interface ModerationAction {
-  id: string;
-  postId: string;
-  moderatorId: string;
-  action: 'remove' | 'restore' | 'warn' | 'ban';
-  reason: string;
-  createdAt: number;
+export interface ModerationThresholds {
+  minVotesRequired: number;  // Minimum votes needed for a decision
+  removalThreshold: number;  // Percentage of remove votes needed for removal
+  aiConfidenceThreshold: number;  // Confidence level needed for AI auto-removal
+  votingPeriod: number;  // Time in milliseconds for voting period
 }
 
 export interface ModerationStats {
@@ -34,28 +52,48 @@ export interface ModerationStats {
   pendingReports: number;
   resolvedReports: number;
   rejectedReports: number;
+  autoRemovedReports: number;
   averageResponseTime: number;
+  aiDetections: number;
 }
 
 export interface ModerationContextType {
-  // Reports
+  // Reports and Voting
   reports: Report[];
   isLoading: boolean;
   error: string | null;
   
   // Report actions
-  createReport: (postId: string, reason: ReportReason, description: string) => Promise<void>;
-  updateReportStatus: (reportId: string, status: Report['status'], notes?: string) => Promise<void>;
+  createReport: (
+    contentId: string,
+    contentType: Report['contentType'],
+    reason: ReportReason,
+    description: string
+  ) => Promise<void>;
   
-  // Moderation actions
-  removePost: (postId: string, reason: string) => Promise<void>;
-  restorePost: (postId: string, reason: string) => Promise<void>;
-  warnUser: (userId: string, reason: string) => Promise<void>;
-  banUser: (userId: string, reason: string) => Promise<void>;
+  // Voting
+  submitVote: (reportId: string, decision: Vote['decision']) => Promise<void>;
+  getVotingStatus: (reportId: string) => {
+    totalVotes: number;
+    removeVotes: number;
+    keepVotes: number;
+    userVote?: Vote['decision'];
+    timeRemaining: number;
+  };
+  
+  // AI Moderation
+  checkContent: (
+    content: string,
+    mediaUrls: string[]
+  ) => Promise<{
+    isAllowed: boolean;
+    flags: AIReportReason[];
+    confidence: number;
+  }>;
   
   // Stats and utilities
   getModerationStats: () => Promise<ModerationStats>;
-  isModerator: (userId: string, sphereId: string) => Promise<boolean>;
+  getThresholds: () => Promise<ModerationThresholds>;
   
   // Refresh functions
   refreshReports: () => Promise<void>;
