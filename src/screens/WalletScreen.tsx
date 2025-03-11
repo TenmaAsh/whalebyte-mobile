@@ -1,241 +1,194 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { useBlockchain } from '../contexts/BlockchainContext';
-import { Card } from '../components/ui/Card';
-import { Text } from '../components/ui/Text';
-import { Button } from '../components/ui/Button';
-import { formatAddress, formatEther } from '../utils/format';
+import { useToken } from '../contexts/TokenContext';
+import { TokenBalanceCard } from '../components/tokens/TokenBalanceCard';
+import { SendTokenModal } from '../components/tokens/SendTokenModal';
 
-export default function WalletScreen() {
-  const { account, balance, isConnected, isLoading, connect, disconnect, claimWelcomeBonus } = useBlockchain();
+export const WalletScreen: React.FC = () => {
+  const { isConnected, connectWallet } = useBlockchain();
+  const { transactions, isLoading, refreshTransactions } = useToken();
+  const [sendModalVisible, setSendModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleConnect = async () => {
-    try {
-      await connect();
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-    }
-  };
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await refreshTransactions();
+    setRefreshing(false);
+  }, [refreshTransactions]);
 
-  const handleDisconnect = () => {
-    disconnect();
-  };
-
-  const handleClaimBonus = async () => {
-    try {
-      await claimWelcomeBonus();
-    } catch (error) {
-      console.error('Failed to claim bonus:', error);
-    }
-  };
-
-  if (isLoading) {
+  const renderTransactionItem = (transaction: any) => {
+    const isReceive = transaction.type === 'receive';
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2563eb" />
-        <Text style={styles.loadingText}>Connecting to wallet...</Text>
+      <View key={transaction.id} style={styles.transactionItem}>
+        <View style={styles.transactionInfo}>
+          <Text style={styles.transactionType}>
+            {isReceive ? 'Received' : 'Sent'} {transaction.symbol}
+          </Text>
+          <Text style={styles.transactionDetails}>
+            {isReceive ? 'From: ' : 'To: '}
+            {isReceive ? transaction.fromAddress : transaction.toAddress}
+          </Text>
+          <Text style={styles.transactionDate}>
+            {new Date(transaction.timestamp).toLocaleDateString()}
+          </Text>
+        </View>
+        <View style={styles.transactionAmount}>
+          <Text
+            style={[
+              styles.amountText,
+              { color: isReceive ? '#4CAF50' : '#F44336' },
+            ]}
+          >
+            {isReceive ? '+' : '-'}{transaction.amount} {transaction.symbol}
+          </Text>
+          <Text style={styles.statusText}>{transaction.status}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  if (!isConnected) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.connectContainer}>
+          <Text style={styles.connectText}>
+            Connect your wallet to view balance and transactions
+          </Text>
+          <TouchableOpacity style={styles.connectButton} onPress={connectWallet}>
+            <Text style={styles.connectButtonText}>Connect Wallet</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
-  if (!isConnected) {
-    return (
-      <ScrollView style={styles.container}>
-        <Card style={styles.card}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="wallet-outline" size={48} color="#2563eb" />
-          </View>
-          <Text style={styles.title}>Connect Your Wallet</Text>
-          <Text style={styles.description}>
-            Connect your wallet to start exploring and joining spheres. You'll need a wallet to:
-          </Text>
-          <View style={styles.featureList}>
-            <View style={styles.featureItem}>
-              <Ionicons name="create-outline" size={24} color="#2563eb" />
-              <Text style={styles.featureText}>Create your own spheres</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <Ionicons name="people-outline" size={24} color="#2563eb" />
-              <Text style={styles.featureText}>Join existing spheres</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <Ionicons name="star-outline" size={24} color="#2563eb" />
-              <Text style={styles.featureText}>Access premium features</Text>
-            </View>
-          </View>
-          <Button
-            title="Connect Wallet"
-            onPress={handleConnect}
-            style={styles.button}
-          />
-        </Card>
-
-        <Card style={styles.card}>
-          <Text style={styles.subtitle}>New to Web3?</Text>
-          <Text style={styles.description}>
-            Get started with a simulator wallet to test the app's features.
-          </Text>
-          <Button
-            title="Use Simulator"
-            onPress={() => {}}
-            variant="outline"
-            style={styles.button}
-          />
-        </Card>
-      </ScrollView>
-    );
-  }
-
   return (
-    <ScrollView style={styles.container}>
-      <Card style={styles.card}>
-        <View style={styles.walletHeader}>
-          <View>
-            <Text style={styles.title}>Your Wallet</Text>
-            <Text style={styles.address}>{formatAddress(account || '')}</Text>
-          </View>
-          <Button
-            title="Disconnect"
-            onPress={handleDisconnect}
-            variant="outline"
-            size="small"
-          />
-        </View>
+    <View style={styles.container}>
+      <TokenBalanceCard />
+      
+      <TouchableOpacity
+        style={styles.sendButton}
+        onPress={() => setSendModalVisible(true)}
+      >
+        <Text style={styles.sendButtonText}>Send Tokens</Text>
+      </TouchableOpacity>
 
-        <View style={styles.balanceContainer}>
-          <Text style={styles.balanceLabel}>Balance</Text>
-          <Text style={styles.balanceValue}>
-            {formatEther(balance?.toString() || '0')} ETH
-          </Text>
-        </View>
+      <View style={styles.transactionsContainer}>
+        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#0000ff" />
+        ) : (
+          <ScrollView
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+          >
+            {transactions.map(renderTransactionItem)}
+          </ScrollView>
+        )}
+      </View>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Spheres Created</Text>
-            <Text style={styles.statValue}>0</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Spheres Joined</Text>
-            <Text style={styles.statValue}>0</Text>
-          </View>
-        </View>
-      </Card>
-
-      <Card style={styles.card}>
-        <Text style={styles.subtitle}>Welcome Bonus</Text>
-        <Text style={styles.description}>
-          Claim your welcome bonus to get started with creating and joining spheres.
-        </Text>
-        <Button
-          title="Claim Bonus"
-          onPress={handleClaimBonus}
-          style={styles.button}
-        />
-      </Card>
-    </ScrollView>
+      <SendTokenModal
+        visible={sendModalVisible}
+        onClose={() => setSendModalVisible(false)}
+      />
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: '#ffffff',
   },
-  loadingContainer: {
+  connectContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f4f4f5',
+    padding: 20,
   },
-  loadingText: {
-    marginTop: 16,
+  connectText: {
     fontSize: 16,
-    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#666666',
   },
-  card: {
-    margin: 16,
-    padding: 16,
-  },
-  iconContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
-  },
-  featureList: {
-    marginVertical: 16,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
-  },
-  featureText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  button: {
-    marginTop: 8,
-  },
-  walletHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  address: {
-    fontSize: 14,
-    color: '#666',
-    fontFamily: 'monospace',
-  },
-  balanceContainer: {
-    marginBottom: 16,
-    padding: 16,
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-  },
-  balanceLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  balanceValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2563eb',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statItem: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#f8fafc',
+  connectButton: {
+    backgroundColor: '#0000ff',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     borderRadius: 8,
   },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 20,
+  connectButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: '600',
+  },
+  sendButton: {
+    backgroundColor: '#0000ff',
+    margin: 16,
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  sendButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  transactionsContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  transactionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  transactionInfo: {
+    flex: 1,
+  },
+  transactionType: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  transactionDetails: {
+    fontSize: 14,
+    color: '#666666',
+    marginTop: 4,
+  },
+  transactionDate: {
+    fontSize: 12,
+    color: '#999999',
+    marginTop: 4,
+  },
+  transactionAmount: {
+    alignItems: 'flex-end',
+  },
+  amountText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#999999',
+    marginTop: 4,
+    textTransform: 'capitalize',
   },
 });
