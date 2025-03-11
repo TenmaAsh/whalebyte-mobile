@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { BlockchainProvider } from './src/contexts/BlockchainContext';
+import { PostProvider } from './src/contexts/PostContext';
 import { SpheresScreen } from './src/screens/SpheresScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { WalletScreen } from './src/screens/WalletScreen';
@@ -69,7 +70,9 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <BlockchainProvider>
-          <AppContent />
+          <PostProvider>
+            <AppContent />
+          </PostProvider>
         </BlockchainProvider>
       </AuthProvider>
     </SafeAreaProvider>
